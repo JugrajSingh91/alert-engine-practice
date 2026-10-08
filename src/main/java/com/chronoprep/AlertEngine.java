@@ -77,12 +77,9 @@ public class AlertEngine {
         boolean shouldNotify = false;
         boolean shouldResolve = false;
         synchronized (alertRunTimeState) {
-            if (metric >= alert.getCriticalThreshold()) {
-                // first time critical threshold breached
-                if (alertRunTimeState.getLastState() == AlertState.PASS) {
-                    alertRunTimeState.setLastState(AlertState.CRITICAL);
-                    shouldNotify = true;
-                }
+            if (metric > alert.getCriticalThreshold()) {
+                alertRunTimeState.setLastState(AlertState.CRITICAL);
+                shouldNotify = true;
             } else {
                 if (alertRunTimeState.getLastState() == AlertState.CRITICAL) {
                     alertRunTimeState.setLastState(AlertState.PASS);
