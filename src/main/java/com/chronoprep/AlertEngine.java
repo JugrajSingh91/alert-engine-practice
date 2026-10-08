@@ -5,21 +5,15 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Alert execution engine — Part I: basic engine.
+ * Alert execution engine — Part II: repeat interval.
  * <p>
- * Required behavior:
- * 1. Load alert configs ONCE at startup via AlertStore.getAlerts().
- * 2. Poll each alert's query on its check interval via MetricQuerier.executeQuery().
- * 3. Evaluate: value > criticalThreshold -> CRITICAL, otherwise PASS.
- * 4. On EVERY breaching check -> Notifier.notify(alert, value).
- * 5. On transition back to PASS -> Notifier.resolve(alert).
- * 6. start() begins evaluation; stop() shuts everything down cleanly.
+ * Polls each alert's query on its check interval. Value > criticalThreshold
+ * is CRITICAL, otherwise PASS. Notifies on transition into CRITICAL and
+ * re-notifies while critical only after repeatIntervalMs elapses since the
+ * last notify. Resolves on transition back to PASS.
  * <p>
- * Concurrency is expected: multiple alerts evaluate on their own schedules,
- * so per-alert state must be thread-safe and stop() must not leak threads.
- * <p>
- * Edge cases worth handling: executeQuery throws, empty alert list,
- * stop() called before start().
+ * Per-alert state is confined to the alert's own scheduled task and guarded
+ * by its own lock; stop() shuts the scheduler down cleanly.
  */
 
 public class AlertEngine {
@@ -28,7 +22,6 @@ public class AlertEngine {
     private final Notifier notifier;
     private final int numThreads;
     private ScheduledExecutorService scheduler;
-
 
     public AlertEngine(AlertStore store, MetricQuerier querier, Notifier notifier,
                        int threads) {
@@ -77,9 +70,15 @@ public class AlertEngine {
         boolean shouldNotify = false;
         boolean shouldResolve = false;
         synchronized (alertRunTimeState) {
+            long currentMs = System.currentTimeMillis();
             if (metric > alert.getCriticalThreshold()) {
-                alertRunTimeState.setLastState(AlertState.CRITICAL);
-                shouldNotify = true;
+                if (alertRunTimeState.lastState == AlertState.PASS
+                    || (alertRunTimeState.lastState == AlertState.CRITICAL
+                        && currentMs - alertRunTimeState.getLastNotifyTimeMs() >= alert.getRepeatIntervalMs())) {
+                    alertRunTimeState.setLastState(AlertState.CRITICAL);
+                    shouldNotify = true;
+                    alertRunTimeState.setLastNotifyTimeMs(currentMs);
+                }
             } else {
                 if (alertRunTimeState.getLastState() == AlertState.CRITICAL) {
                     alertRunTimeState.setLastState(AlertState.PASS);
