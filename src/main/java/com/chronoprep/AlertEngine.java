@@ -5,18 +5,15 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Alert execution engine — YOUR IMPLEMENTATION GOES HERE.
+ * Alert execution engine — Part I: basic engine.
  * <p>
  * Required behavior:
  * 1. Load alert configs ONCE at startup via AlertStore.getAlerts().
  * 2. Poll each alert's query on its check interval via MetricQuerier.executeQuery().
- * 3. Evaluate: value >= criticalThreshold -> CRITICAL, otherwise PASS.
- * 4. On transition into CRITICAL -> Notifier.notify(alert, value).
+ * 3. Evaluate: value > criticalThreshold -> CRITICAL, otherwise PASS.
+ * 4. On EVERY breaching check -> Notifier.notify(alert, value).
  * 5. On transition back to PASS -> Notifier.resolve(alert).
- * 6. While an alert stays CRITICAL, re-notify every repeat interval.
- * Example: check every 2s, repeat every 4s -> notify at t=0, skip t=2s,
- * re-notify at t=4s.
- * 7. start() begins evaluation; stop() shuts everything down cleanly.
+ * 6. start() begins evaluation; stop() shuts everything down cleanly.
  * <p>
  * Concurrency is expected: multiple alerts evaluate on their own schedules,
  * so per-alert state must be thread-safe and stop() must not leak threads.
@@ -24,6 +21,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Edge cases worth handling: executeQuery throws, empty alert list,
  * stop() called before start().
  */
+
 public class AlertEngine {
     private final AlertStore store;
     private final MetricQuerier querier;
@@ -73,29 +71,27 @@ public class AlertEngine {
         try {
             metric = querier.executeQuery(alert.getQuery());
         } catch (Exception e) {
-            // log the error and  emit a metric
+            System.out.println("Metric querier threw an exception: " + e);
             return;
         }
+        boolean shouldNotify = false;
+        boolean shouldResolve = false;
         synchronized (alertRunTimeState) {
-            if (metric >= alert.getCriticalThreshold()) {
-                // first time critical threshold breached
-                if (alertRunTimeState.getLastState() == AlertState.PASS || (
-                        // re notify if alert is still active
-                        alertRunTimeState.getLastState() == AlertState.CRITICAL
-                                && System.currentTimeMillis() - alertRunTimeState.getLastNotifyTimeMs()
-                                >= alert.getRepeatIntervalMs())) {
-                    alertRunTimeState.setLastState(AlertState.CRITICAL);
-                    alertRunTimeState.setLastNotifyTimeMs(System.currentTimeMillis());
-                    notifier.notify(alert, metric);
-                }
-
+            if (metric > alert.getCriticalThreshold()) {
+                alertRunTimeState.setLastState(AlertState.CRITICAL);
+                shouldNotify = true;
             } else {
                 if (alertRunTimeState.getLastState() == AlertState.CRITICAL) {
                     alertRunTimeState.setLastState(AlertState.PASS);
-                    notifier.resolve(alert);
+                    shouldResolve = true;
                 }
             }
         }
+        System.out.printf("[t=%d] %s value=%.1f -> %s%n",
+                System.currentTimeMillis(), alert.getId(), metric, alertRunTimeState.getLastState());
+
+        if (shouldNotify) notifier.notify(alert, metric);
+        if (shouldResolve) notifier.resolve(alert);
     }
 
     public void stop() {
@@ -106,7 +102,6 @@ public class AlertEngine {
 
         try {
             if (!this.scheduler.awaitTermination(5, TimeUnit.SECONDS)) this.scheduler.shutdownNow();
-
         } catch (InterruptedException e) {
             this.scheduler.shutdownNow();
             Thread.currentThread().interrupt();
