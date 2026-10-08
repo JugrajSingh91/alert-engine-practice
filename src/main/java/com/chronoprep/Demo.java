@@ -1,5 +1,6 @@
 package com.chronoprep;
 
+import java.time.*;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -19,10 +20,13 @@ public class Demo {
                 System.out.println("RESOLVE " + alert.getId());
             }
         };
-        AlertStore alertStore = () -> List.of(new AlertConfig("cpu-high", "cpu_usage", 100.0, 5000, 10000));
-        AlertEngine alertEngine = new AlertEngine(alertStore, querier, notifier, 2);
-        alertEngine.start();
+        AlertConfig alert = new AlertConfig("cpu-high", "cpu_usage", 100.0, 5000, 10000);
+        AlertStore alertStore = () -> List.of(alert);
+        AlertEngine engine = new AlertEngine(alertStore, querier, notifier,2);
+
+        // Test Scheduler
+        engine.start();
         Thread.sleep(22000);
-        alertEngine.stop();
+        engine.stop();
     }
 }

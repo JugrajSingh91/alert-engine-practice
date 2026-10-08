@@ -11,6 +11,16 @@ public class AlertRuntimeState {
 
     AlertState lastState;
 
+    public long getLastNotifyTimeMs() {
+        return lastNotifyTimeMs;
+    }
+
+    public void setLastNotifyTimeMs(long lastNotifyTimeMs) {
+        this.lastNotifyTimeMs = lastNotifyTimeMs;
+    }
+
+    long lastNotifyTimeMs;
+
     public AlertRuntimeState () {
         this.lastState = AlertState.PASS;
     }
