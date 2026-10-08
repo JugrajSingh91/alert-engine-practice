@@ -7,7 +7,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class Demo {
 
     public static void main(String args[]) throws Exception {
-        double[] values = {75, 60, 110, 80, 120, 50, 1234, 45, 60};
+        double[] values = {80, 110, 85, 115, 90, 50, 75, 78, 72, 60};
         AtomicInteger index = new AtomicInteger();
         MetricQuerier querier = query -> values[index.getAndIncrement() % values.length];
         Notifier notifier = new Notifier() {
@@ -27,7 +27,7 @@ public class Demo {
 
         // Test Scheduler
         engine.start();
-        Thread.sleep(22000);
+        Thread.sleep(55000);
         engine.stop();
     }
 }
