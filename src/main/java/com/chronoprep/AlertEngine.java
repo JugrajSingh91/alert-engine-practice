@@ -5,16 +5,15 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Alert execution engine — Part II: repeat interval.
+ * Alert execution engine — Part III: warning threshold.
  * <p>
- * Polls each alert's query on its check interval. Value > criticalThreshold
- * is CRITICAL, otherwise PASS. Notifies on transition into CRITICAL and
- * re-notifies while critical only after repeatIntervalMs elapses since the
- * last notify. Resolves on transition back to PASS.
- * <p>
- * Per-alert state is confined to the alert's own scheduled task and guarded
- * by its own lock; stop() shuts the scheduler down cleanly.
+ * Three-state evaluation: value > criticalThreshold is CRITICAL,
+ * value > warningThreshold is WARN, otherwise PASS. Notifies on
+ * severity promotion (tracked by a max-notified latch, so demotions
+ * within an open incident don't re-page); re-notifies with the
+ * current state once repeatIntervalMs elapses. Resolves on PASS.
  */
+
 
 public class AlertEngine {
     private final AlertStore store;
@@ -59,7 +58,7 @@ public class AlertEngine {
         }
     }
 
-    void evaluate(AlertConfig alert, AlertRuntimeState alertRunTimeState) {
+    void evaluate(AlertConfig alert, AlertRuntimeState alertRuntimeState) {
         double metric;
         try {
             metric = querier.executeQuery(alert.getQuery());
@@ -69,27 +68,30 @@ public class AlertEngine {
         }
         boolean shouldNotify = false;
         boolean shouldResolve = false;
-        synchronized (alertRunTimeState) {
+        synchronized (alertRuntimeState) {
             long currentMs = System.currentTimeMillis();
-            if (metric > alert.getCriticalThreshold()) {
-                if (alertRunTimeState.lastState == AlertState.PASS
-                    || (alertRunTimeState.lastState == AlertState.CRITICAL
-                        && currentMs - alertRunTimeState.getLastNotifyTimeMs() >= alert.getRepeatIntervalMs())) {
-                    alertRunTimeState.setLastState(AlertState.CRITICAL);
-                    shouldNotify = true;
-                    alertRunTimeState.setLastNotifyTimeMs(currentMs);
-                }
+            AlertState currentState = metric > alert.getCriticalThreshold()?
+                        AlertState.CRITICAL : metric > alert.getWarningThreshold()? AlertState.WARN: AlertState.PASS;
+            if (currentState == AlertState.PASS) {
+                if (alertRuntimeState.getLastState() != AlertState.PASS) shouldResolve = true;
+                alertRuntimeState.setLastState(AlertState.PASS);
+                alertRuntimeState.setMaxNotified(AlertState.PASS);
             } else {
-                if (alertRunTimeState.getLastState() == AlertState.CRITICAL) {
-                    alertRunTimeState.setLastState(AlertState.PASS);
-                    shouldResolve = true;
+                if (currentState.severity > alertRuntimeState.getMaxNotified().severity) {
+                    shouldNotify = true;
+                    alertRuntimeState.setMaxNotified(currentState);
+                    alertRuntimeState.setLastNotifyTimeMs(currentMs);
+                } else if (currentMs - alertRuntimeState.getLastNotifyTimeMs() >= alert.getRepeatIntervalMs()) {
+                    shouldNotify = true;
+                    alertRuntimeState.setLastNotifyTimeMs(currentMs);
                 }
+                alertRuntimeState.setLastState(currentState);
             }
         }
         System.out.printf("[t=%d] %s value=%.1f -> %s%n",
-                System.currentTimeMillis(), alert.getId(), metric, alertRunTimeState.getLastState());
+                System.currentTimeMillis(), alert.getId(), metric, alertRuntimeState.getLastState());
 
-        if (shouldNotify) notifier.notify(alert, metric);
+        if (shouldNotify) notifier.notify(alert, alertRuntimeState.getLastState(), metric);
         if (shouldResolve) notifier.resolve(alert);
     }
 

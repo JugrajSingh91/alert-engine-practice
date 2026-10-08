@@ -1,6 +1,15 @@
 package com.chronoprep;
 
 public class AlertRuntimeState {
+    AlertState lastState;
+    AlertState maxNotified;
+    long lastNotifyTimeMs;
+
+    public AlertRuntimeState () {
+        this.lastState = AlertState.PASS;
+        this.maxNotified = AlertState.PASS;
+    }
+
     public AlertState getLastState() {
         return lastState;
     }
@@ -8,8 +17,6 @@ public class AlertRuntimeState {
     public void setLastState(AlertState lastState) {
         this.lastState = lastState;
     }
-
-    AlertState lastState;
 
     public long getLastNotifyTimeMs() {
         return lastNotifyTimeMs;
@@ -19,9 +26,11 @@ public class AlertRuntimeState {
         this.lastNotifyTimeMs = lastNotifyTimeMs;
     }
 
-    long lastNotifyTimeMs;
+    public AlertState getMaxNotified() {
+        return maxNotified;
+    }
 
-    public AlertRuntimeState () {
-        this.lastState = AlertState.PASS;
+    public void setMaxNotified(AlertState maxNotified) {
+        this.maxNotified = maxNotified;
     }
 }

@@ -7,14 +7,16 @@ public class AlertConfig {
     private final String id;
     private final String query;
     private final double criticalThreshold;
+    private final double warningThreshold;
     private final long checkIntervalMs;
     private final long repeatIntervalMs;
 
-    public AlertConfig(String id, String query, double criticalThreshold,
+    public AlertConfig(String id, String query, double criticalThreshold, double warningThreshold,
                        long checkIntervalMs, long repeatIntervalMs) {
         this.id = id;
         this.query = query;
         this.criticalThreshold = criticalThreshold;
+        this.warningThreshold = warningThreshold;
         this.checkIntervalMs = checkIntervalMs;
         this.repeatIntervalMs = repeatIntervalMs;
     }
@@ -29,6 +31,10 @@ public class AlertConfig {
 
     public double getCriticalThreshold() {
         return criticalThreshold;
+    }
+
+    public double getWarningThreshold() {
+        return warningThreshold;
     }
 
     public long getCheckIntervalMs() {
